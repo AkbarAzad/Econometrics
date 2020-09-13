@@ -1,0 +1,198 @@
+---
+title: "Analysing Returns of Schooling via OLS and 2SLS (Part 1)"
+author: "Akbar Azad"
+date: "13 September 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 10, fig.height = 10)
+```
+
+## Background
+
+This is an R Markdown document. 
+
+We are analysing the returns of schooling based on 3,010 US men.
+
+```{r}
+# Load packages
+library(readxl)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+
+# Set working directory
+setwd("C:\\Users\\65961\\Desktop\\Coursera\\Econometrics\\Week4")
+
+# Load dataset
+data <- read_excel("_46d7b6e393ed4cd5a42ba1ec49adede2_TestExer4_Wage-round1.xlsx", sheet = 1)
+```
+
+## The Simple Linear Regression Model
+
+### Wage versus Education
+
+Let us find out how the data looks like first.
+
+```{r}
+head(data)
+```
+
+Next, we visually inspect the two variables to determine if a positive or negative relationship exists.
+
+```{r}
+data %>%
+  ggplot(aes(x = educ, y = logw)) +
+  geom_point() +
+  ggtitle("Scatter Plot between log(Wage) and Education") +
+  theme(title = element_text(size = 10, colour = "black"),
+        axis.title = element_text(size = 10, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"))
+```
+
+### Estimating a Linear Regression
+
+For the wage data, the regression model will be
+$logw$ = $\beta$<sub>1</sub> + $\beta$<sub>2</sub>educ + $\epsilon$
+
+```{r}
+model1 <- lm(logw ~ educ, data = data)
+beta1 <- model1$coef[1]
+beta2 <- model1$coef[2]
+model1_summary <- summary(model1)
+
+model1_summary_df <- data.frame("Predictors" = names(coef(model1)), "Estimates" = 
+                                  coef(model1), "T_Value" = summary(model1)$coefficients[,3], "P_Value" = summary(model1)$coefficients[,4])
+model1_summary_df
+```
+
+The estimated value of $\beta$<sub>2</sub> suggests that, on average, an increase of education by 1 unit, in this case, 1 year, increases the log(Wage) by 0.05209424. Let us add the regression line to the previously plotted scatter plot.
+
+```{r}
+base_plot <- ggplot(aes(x = educ, y = logw), data = data) +
+  geom_point()
+
+base_plot +
+  geom_abline(slope = beta2, intercept = beta1, linetype = "solid") +
+  ggtitle("Scatter Plot Between log(Wage) and Education, including Regression") +
+  theme(title = element_text(size = 10, colour = "black"),
+        axis.title = element_text(size = 10, colour = "black"),
+        axis.text = element_text(size = 10, colour = "black"))
+```
+
+### Prediction with the Linear Regression Model
+
+Let us use the predict() function in R to estimate log(Wage) given a number of education values.
+
+```{r}
+new_data_model1 <- data.frame(educ = c(12, 16, 8, 4, 20))
+
+logw_hat <- predict(model1, new_data_model1)
+
+names(logw_hat) <- c("education = 12 years", "16 years", "8 years", "4 years", "20 years")
+
+logw_hat
+```
+
+### Repeated Samples to Assess Linear Regression Coefficients
+
+We draw several samples from the wage data to calculate the average of $\beta$<sub>2</sub> since it is a random variable. ($\beta$<sub>1</sub> is also a random variable).
+
+```{r}
+N <- nrow(data) # Number of observations
+C <- 200 # Number of samples
+S <- 100 # Size of each sample
+
+sum_beta2 <- 0
+
+for (i in 1:C) {
+  set.seed(5*i)
+  sample_set <- data[sample(1:N, size = S, replace = TRUE),]
+  model1_sample <- lm(logw ~ educ, data = sample_set)
+  sum_beta2 <- sum_beta2 + coef(model1_sample)[[2]]
+}
+
+print(sum_beta2/C, digits = 3)
+```
+
+The result, *b* = 0.051, is the average of 200 estimates of $\beta$<sub>2</sub>.
+
+### Identifying possible relationships within data
+
+Performing exploratory data analysis below:
+
+```{r}
+# First 6 rows of data
+data %>%
+  head()
+
+# Finding correlations
+data_cor <- cor(data)
+
+data_cor %>%
+  as.data.frame() %>%
+  mutate(variables1 = rownames(data_cor)) %>%
+  gather(key = 'variables2', value = 'correlation', -variables1) %>%
+  filter(correlation != 1) %>%
+  ggplot(aes(x = variables2, y = variables1, fill = correlation)) +
+  geom_tile() +
+  geom_text(aes(label = round(correlation,2)), size = 5, colour = "white") +
+  ggtitle("Correlation Heatmap") +
+  theme(title = element_text(size = 10),
+        axis.title = element_blank(),
+        axis.text.x = element_text(size = 8, colour = "black", angle = 45),
+        axis.text.y = element_text(size = 8, colour = "black"))
+
+```
+```{r}
+data %>%
+  ggplot(aes(x = educ, y = exp(logw))) +
+  geom_point() +
+  geom_smooth()
+```
+
+Let's try it out with exper.
+
+```{r}
+data %>%
+  ggplot(aes(x = exper, y = exp(logw))) +
+  geom_point() +
+  geom_smooth()
+```
+
+How about with age?
+
+```{r}
+data %>%
+  ggplot(aes(x = age, y = exp(logw))) +
+  geom_point() +
+  geom_smooth()
+```
+
+Let's try with age-squared.
+
+```{r}
+data %>%
+  ggplot(aes(x = (age^2), y = exp(logw))) +
+  geom_point() +
+  geom_smooth()
+```
+
+Performing OLS, with logw (log wage) as dependent variable x<sub>2</sub>:
+
+```{r}
+model_ols <- lm(logw ~ educ + exper + (exper^2) + smsa + south, data = data)
+```
+
+Summary of model above:
+
+```{r}
+model_ols_df <- data.frame(Variables = names(model_ols$coefficients), Estimates = 
+                             model_ols$coefficients, PValues = summary(model_ols)$coef[,4])
+
+model_ols_df
+```
+
+Variables south and smsa have the strongest influence on logw. 
+Analysis to be continued for 2SLS.
